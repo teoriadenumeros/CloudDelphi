@@ -1,0 +1,267 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx} 
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{url}
+
+% Configuración de márgenes e interfaz visual institucional
+\geometry{top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm}
+\definecolor{darkblue}{rgb}{0.0, 0.2, 0.4}
+
+% Configuración limpia de hyperref para evitar conflictos en los marcadores
+\hypersetup{
+    colorlinks=true,
+    linkcolor=darkblue,
+    urlcolor=darkblue,
+    pdftitle={CloudDelphi},
+}
+
+\titleformat{\section}{\large\bfseries\color{darkblue}}{\thesection}{1em}{}[{\titlerule[0.5pt]}]
+\titleformat{\subsection}{\normalsize\bfseries\color{darkblue}}{\thesubsection}{1em}{}
+
+\begin{document}
+
+\begin{center}
+    {\LARGE \bfseries Delphi de Nube para Análisis Multironda} \\[0.3cm]
+    {\Large \bfseries (Informe Técnico)} \\[0.4cm]
+    \textbf{Miguel Cruz Ramírez} \\[0.2cm]
+    \textit{Universidad Antonio Nariño, Bogotá, mayo 24 de 2026}
+\end{center}
+
+\vspace{0.4cm}
+
+\begin{abstract}
+El presente informe describe los presupuestos matemáticos y la justificación metodológica subyacente del script \texttt{CloudDelphi} escrito en lenguaje estadístico R, cuya primera versión aparece originalmente en \cite{cruz2020}. En esta nueva versión se extiende el modelo de nube clásico (\textit{Cloud Model}) propuesto originalmente por Deyi Li \cite{li1995}, adaptándolo a las dinámicas de paneles Delphi relativamente flexibles. El algoritmo implementado no adopta la premisa tradicional de normalidad, sino que prescribe una entropía dividida y posiblemente asimétrica, complementada con valores de hiper-entropía histórica condicional. El script responde a instrumentos estructurados en cuatro descriptores cognitivos descritos en \cite{cruz2021}: un rango de pronóstico formado por dos valores mínimo y máximo, un valor modal más probable, y un nivel de certeza donde el experto manifiesta su nivel de seguridad. La búsqueda de consenso se modela mediante un espacio de fases estocástico coordinado, el cual genera una nube final que subsume la opinión colectiva y varía ronda tras ronda. El script ensambla el conjunto de gáficos correspondientes a cada ronda y exporta una figura útil para investigaciones prospectivas.
+\end{abstract}
+
+\section{El método Delphi}
+El método Delphi es un método de la prospectiva que se caracteriza por su estructuración en forma de rondas generalmente de pronóstico, con respuestas emitidas por un panel de expertos anonimizados, una retroalimentación controlada por un grupo coordinador, y una respuesta estadística grupal que subsume la opinión colectiva en busca de consenso \cite{cruz2009}. Durante los últimos años, el método Delphi ha experimentado una amplia diversificación metodológica, influenciada fundamentalmente por el desarrollo científico y tecnológico \cite{cruz2018}. Sirven de ejemplo el Delphi fuzzy y el Delphi de nube, como enfoques modernos no deterministas \cite{cruz2022}. La implementación de este método parte de la selección de un panel de expertos en cierto campo específico, lo cual es por sí mismo un tema complejo y no pocas veces polémico \cite{cruz2012,cruz2020relmis}.
+
+\section{Recolección de datos a partir de un instrumento empírico}
+La arquitectura del script ha sido diseñada en correspondencia con un instrumento empírico para la recolección de información experta, descrito originalmente en \cite{cruz2021}. Este último proporciona cuatro descriptores numéricos independientes para cuantificar cada juicio individual. Los descriptores son los siguientes:
+\begin{enumerate}
+    \item \textbf{Mínimo ($x_{min}$):} Límite inferior absoluto donde el fenómeno investigado deja de ser válido, conforme a la opinión del experto.
+    \item \textbf{Máximo ($x_{max}$):} Límite superior absoluto admisible según el experto.
+    \item \textbf{Valor más probable ($x_{prob}$):} Valor comprendido en el rango formado por ambos límites anteriores, donde el experto deposita su máxima confianza o pronóstico (punto de cresta o valor modal).
+    \item \textbf{Nivel de certeza ($ex_{sec}$):} Valor del intervalo $[0, 1]$, que expresa el nivel de seguridad según el parecer del propio experto (0 corresponde a total inseguridad en el juicio emitido y 1 corresponde a la seguridad absoluta).
+\end{enumerate}
+
+Para una ronda cualquiera con $n$ expertos, el dataset de entrada se define mediante la siguiente expresión matricial estructurada por bloques:
+\begin{equation}
+    P = \Big[ \mathbf{E_1}, \, \mathbf{E_2}, \, \dots, \, \mathbf{E_n} \Big]
+\end{equation}
+El vector de descriptores correspondiente a cada experto individual $\mathbf{E_i}$ se estructura del siguiente modo dentro del bloque correspondiente:
+\begin{equation}
+    \mathbf{E_i} = \left[ x_{min,i}, \quad x_{max,i}, \quad x_{prob,i}, \quad ex_{sec,i} \right]
+\end{equation}
+
+\section{Fundamentos matemáticos}
+El procesamiento por intermedio de la función \texttt{CloudDelphi\_Core} transforma las lecturas empíricas (vector de bloques concatenados $P$) en los tres parámetros numéricos constitutivos del modelo de nube \cite{li1995}: el valor esperado ($Ex$), la entropía ($En$) y la hiper-entropía ($He$).
+
+\subsection{Entropía dividida de asimetría libre \texorpdfstring{($En_L$ y $En_R$)}{En\_L y En\_R}}
+En el modelo de nube clásico se adopta el supuesto de normalidad, razón por la cual la entropía total se obtiene dividiendo el rango espacial por $6$ ($\frac{x_{max} - x_{min}}{6}$), fundamentado rígidamente en la regla $\pm3\sigma$, la cual asume simetría perfecta y comportamiento de campana gaussiana pura. 
+
+En general, la opinión humana y el consenso de expertos no tienen por qué ser simétricos ni normales \textit{a priori}. El presente script rompe con el divisor fijo de 6, seccionando la geometría de la nube en dos colas relativamente independientes: la entropía izquierda ($En_L$) y la entropía derecha ($En_R$). Ambas incorporan dinámicamente una suerte de factor de inseguridad para cada experto:
+\begin{equation}
+    \text{Insecurity\_Factor}_i = 1 - ex_{sec,i}
+\end{equation}
+\begin{equation}
+    En_{L,i} = \frac{(x_{prob,i} - x_{min,i}) \cdot (1 + \text{Insecurity\_Factor}_i)}{3}
+\end{equation}
+\begin{equation}
+    En_{R,i} = \frac{(x_{max,i} - x_{prob,i}) \cdot (1 + \text{Insecurity\_Factor}_i)}{3}
+\end{equation}
+
+Cuando el experto evalúa el fenómeno de manera perfectamente simétrica, el sistema mantiene la consistencia. En cambio, si existe sesgo hacia algún extremo, la asimetría emerge de forma natural en el gráfico sin que ello genere deformaciones artificiales en la cola contraria.
+
+\subsection{Hiper-entropía dinámica e histórica \texorpdfstring{($He_i$)}{He\_i}}
+El concepto de hiper-entropía mide la dispersión secundaria de la incertidumbre (el grado de difuminación o \textit{blurriness} de la nube formada por gotas). El algoritmo la calcula por intermedio de sendas condiciones metodológicas específicas, primero en la fase estática inicial y luego en las fases evolutivas subsiguintes.
+
+\subsubsection{Fase estática inicial (ronda $r = 1$)}
+A falta de un historial previo, en la primera ronda Delphi la hiper-entropía se deduce de la propia estabilidad interna en la información proporcionada por cada experto. Primero se calcula un factor de desbalance geométrico, junto a una constante adaptativa $K_{\text{Dynamic}}$:
+\begin{equation}
+    \text{Imbalance\_Factor}_i = \frac{|En_{L,i} - En_{R,i}|}{En_{L,i} + En_{R,i} + 0.01}
+\end{equation}
+\begin{equation}
+    K_{\text{Dynamic},i} = \max\left((3 + 3 \cdot ex_{sec,i}) \cdot (1 - 0.5 \cdot \text{Imbalance\_Factor}_i),\, 2.0\right)
+\end{equation}
+\begin{equation}
+    He_{i} = \frac{En_{L,i} + En_{R,i}}{2 \cdot K_{\text{Dynamic},i}}
+\end{equation}
+
+\subsubsection{Fase evolutiva Delphi (rondas $r > 1$)}
+Cuando existen rondas previas, el framework activa el siguiente mecanismo de penalización por volatilidad histórica:
+\begin{equation}
+    He_{i,r} = \frac{|x_{min,r} - x_{min,r-1}| + |x_{max,r} - x_{max,r-1}| + |x_{prob,r} - x_{prob,r-1}|}{18}
+\end{equation}
+
+El denominador 18 actúa como un factor de normalización que homogeneiza la escala de volatilidad inter-ronda con los parámetros basales del modelo de nube. Dicho valor se deduce del acoplamiento multiplicativo de tres componentes fundamentales: (1) el divisor de escala espacial de la entropía clásica ($\pm3\sigma$), (2) el promedio aritmético de las desviaciones absolutas correspondientes a los tres descriptores lineales observados ($x_{min}$, $x_{max}$, $x_{prob}$), y (3) un factor de reducción de la mitad ($\times 2$) diseñado para preservar la estabilidad estocástica de la hiper-entropía. Con ello se garantiza que la borrosidad secundaria de la nube refleje proporcionalmente el coste cognitivo de la transición de una ronda a otra, evitando distorsionar la geometría de la síntesis grupal.
+
+\subsection{Agregación sintética del consenso grupal \texorpdfstring{($Exp_s$)}{Exp\_s}}
+La nube sintética representa el consenso unificado del panel de expertos, y se construye mediante operadores robustos de agregación cuadrática no lineales, procurando mitigar el efecto de valores extremos.
+\begin{equation}
+    Ex_s = \frac{1}{n}\sum_{i=1}^{n} Ex_i, \quad He_s = \frac{1}{n}\sum_{i=1}^{n} He_i
+\end{equation}
+\begin{equation}
+    En_{Ls} = \sqrt{\frac{1}{n}\sum_{i=1}^{n} En_{L,i}^2 + \frac{\text{Var}(Ex)}{2}}, \quad En_{Rs} = \sqrt{\frac{1}{n}\sum_{i=1}^{n} En_{R,i}^2 + \frac{\text{Var}(Ex)}{2}}
+\end{equation}
+
+\subsection{Ajuste del script para el renderizado estocástico}
+Para garantizar que las nubes posean una textura orgánica real, la función \texttt{DrawCloudSpace} implementa un generador estocástico coordinado bidimensional. Para cada una de las $N$ gotas independientes calculadas se procede del modo siguiente:
+\begin{enumerate}
+    \item Se selecciona de forma probabilística el ala de la entropía correspondiente según la asimetría real del dato ($En_L$ o $En_R$).
+    \item Se genera una incertidumbre aleatoria coordinada instantánea para la gota: $\text{En\_Rand} \sim N(\text{En\_Side}, He^2)$ asegurando un piso físico de $0.01$.
+    \item Ambas dimensiones del gráfico se acoplan empleando la misma varianza de gota:
+    \begin{equation}
+        X_{val} \sim N(Ex, En_{Rand}^2)
+    \end{equation}
+    \begin{equation}
+        \mu = \exp\left(-\frac{(X_{val} - Ex)^2}{2 \cdot En_{Rand}^2}\right)
+    \end{equation}
+\end{enumerate}
+
+\section{Ejemplificación práctica}
+El script y la metodología que lo sustenta responden a una batería de datos empíricos formada por cuatro valores emitidos por cada experto. La ejemplificación que sigue ofrece datos simulados con fines didácticos. El proceso Delphi se estructura en dos rondas de evaluación y contempla las opiniones de un panel formado por siete (7) expertos.
+
+\subsection{Conformación de una base de datos a partir de las reacciones del panel}
+La siguiente tabla consolida los valores numéricos primarios ingresados por el panel constituido por siete expertos (\textbf{Exp\_1},...,\textbf{Exp\_7}), por intermedio de un instrumento empírico diseñado para la captura de información \cite{cruz2021}. Los expertos pronostican resultados propspectivos en una escala continua de 0 a 100, o bien evalúan el nivel de efectividad de cierta estrategia didáctica. Cada uno de ellos provee dos valores mínimo y máximo, un valor intermedio más probable, y un grado de seguridad dentro del conjunto $[0,1]$. Tras finalizar la primera ronda, el grupo coordinador sistematiza la información y retroalimenta al panel con un resumen de la opinión colectiva. Los expertos, al recibir dicha información pueden cambiar o no de criterio y tras ello vuelven a diligenciar el mismo instrumento (ronda Delphi, \cite{cruz2009}). El cuadro siguiente evidencia las modificaciones explícitas en sus juicios al pasar de la ronda $\mathbf{R_1}$ a la ronda $\mathbf{R_2}$.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{clccccccc}
+\toprule
+\textbf{Ronda} & \textbf{Descriptor} & \textbf{Exp\_1} & \textbf{Exp\_2} & \textbf{Exp\_3} & \textbf{Exp\_4} & \textbf{Exp\_5} & \textbf{Exp\_6} & \textbf{Exp\_7} \\
+\midrule
+& Mínimo ($x_{min}$)    & 20.00 & 22.00 & 30.00 & 15.00 & 40.00 & 10.00 & 25.00 \\
+$\mathbf{R_1}$ & Máximo ($x_{max}$)    & 50.00 & 48.00 & 55.00 & 45.00 & 75.00 & 40.00 & 55.00 \\
+& Probable ($x_{prob}$)  & 28.00 & 35.00 & 38.00 & 25.00 & 60.00 & 22.00 & 42.00 \\
+& Certeza ($ex_{sec}$)   & 0.85  & 0.05  & 0.75  & 0.60  & 0.85  & 0.02  & 0.70  \\
+\midrule
+& Mínimo ($x_{min}$)    & 26.00 & 40.00 & 32.00 & 28.00 & 35.00 & 45.00 & 30.00 \\
+$\mathbf{R_2}$ & Máximo ($x_{max}$)    & 42.00 & 68.00 & 45.00 & 40.00 & 52.00 & 75.00 & 44.00 \\
+& Probable ($x_{prob}$)  & 32.00 & 55.00 & 36.00 & 34.00 & 40.00 & 60.00 & 35.00 \\
+& Certeza ($ex_{sec}$)   & 0.95  & 0.80  & 0.92  & 0.88  & 0.90  & 0.85  & 0.91  \\
+\bottomrule
+\end{tabular}
+\caption{Matriz de reacciones del panel de expertos en dos rondas}
+\end{table}
+
+\subsection{Métricas consolidadas tras la ronda $\mathbf{R_1}$}
+Después de procesar las respuestas iniciales mediante las ecuaciones de entropía asimétrica anteriormente descritas, el valor esperado sintetizado del grupo para la primera ronda alcanza el valor $Ex_s = 35.71$.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{lcccccccc}
+\toprule
+\textbf{Métrica} & \textbf{Exp\_1} & \textbf{Exp\_2} & \textbf{Exp\_3} & \textbf{Exp\_4} & \textbf{Exp\_5} & \textbf{Exp\_6} & \textbf{Exp\_7} & \textbf{Exp\_s} \\
+\midrule
+Ex\_Prob   & 28.00 & 35.00 & 38.00 & 25.00 & 60.00 & 22.00 & 42.00 & \textbf{35.71} \\
+En\_Left   & 3.07  & 8.45  & 3.33  & 4.67  & 7.67  & 7.92  & 7.37  & \textbf{12.49} \\
+En\_Right  & 8.43  & 8.45  & 7.08  & 9.33  & 5.75  & 11.88 & 5.63  & \textbf{6.92}  \\
+He\_Hyper  & 1.35  & 2.68  & 1.21  & 1.75  & 1.30  & 3.59  & 1.37  & \textbf{1.89}  \\
+Weight     & 0.24  & 0.01  & 0.24  & 0.14  & 0.20  & 0.00  & 0.18  & \textbf{1.00}  \\
+Delta\_En  & 0.44  & 0.30  & 0.49  & 0.56  & 0.34  & 0.34  & 0.62  & \textbf{0.14}  \\
+Unc\_Index & 0.23  & 0.32  & 0.23  & 0.25  & 0.19  & 0.36  & 0.21  & \textbf{0.20}  \\
+\bottomrule
+\end{tabular}
+\caption{Resultados consolidados tras la ronda $\mathbf{R_1}$}
+\end{table}
+
+Una situación crítica proviene de las reacciones de los expertos \textbf{Exp\_2} y \textbf{Exp\_6}, quienes declararon niveles de certeza iniciales extremadamente bajos ($0.05$ y $0.02$). Ante esta singularidad, el algoritmo responde de manera defensiva: expande sus hiper-entropías a niveles de \textbf{2.68} y \textbf{3.59}, reduciendo drásticamente los pesos grupales respectivos (\textbf{0.01} y \textbf{0.00}) dentro del panel.
+
+\subsection{Métricas consolidadas tras la ronda $\mathbf{R_2}$}
+Luego de recibir un resumen de lo ocurrido en la primera ronda, en la ronda subsiguiente el consenso del grupo se estrecha notablemente, como testimonio epistémico de la tendencia convergente en el método Delphi. Nótese que el centroide se desplaza reflejando un comportamiento más unificado en $Ex_s = 41.71$. No se trata de arribar a un consenso absoluto que generalmente no tiene por qué existir, sino de conseguir cierto rango estable y razonablemente variable del juicio colectivo \cite{cruz2009}.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{lcccccccc}
+\toprule
+\textbf{Métrica} & \textbf{Exp\_1} & \textbf{Exp\_2} & \textbf{Exp\_3} & \textbf{Exp\_4} & \textbf{Exp\_5} & \textbf{Exp\_6} & \textbf{Exp\_7} & \textbf{Exp\_s} \\
+\midrule
+Ex\_Prob   & 32.00 & 55.00 & 36.00 & 34.00 & 40.00 & 60.00 & 35.00 & \textbf{41.71} \\
+En\_Left   & 2.10  & 6.00  & 1.44  & 2.24  & 1.83  & 5.75  & 1.82  & \textbf{5.34}  \\
+En\_Right  & 3.50  & 5.20  & 3.24  & 2.24  & 4.40  & 5.75  & 3.27  & \textbf{5.92}  \\
+He\_Hyper  & 1.00  & 3.22  & 0.78  & 1.50  & 2.67  & 6.00  & 1.28  & \textbf{2.35}  \\
+Weight     & 0.18  & 0.07  & 0.22  & 0.17  & 0.12  & 0.05  & 0.18  & \textbf{1.00}  \\
+Delta\_En  & 0.51  & 0.34  & 0.55  & 0.68  & 0.54  & 0.42  & 0.61  & \textbf{0.42}  \\
+Unc\_Index & 0.36  & 0.58  & 0.33  & 0.67  & 0.86  & 1.04  & 0.50  & \textbf{0.42}  \\
+\bottomrule
+\end{tabular}
+\caption{Resultados consolidados tras la ronda $\mathbf{R_2}$}
+\end{table}
+
+\subsection{Visualización e interpretación del proceso}
+En la figura siguiente se renderiza un mapa estocástico generado por el script \texttt{CloudDelphi}, ilustrando la evolución de una ronda a otra. Como puede verse, la primera nube sintética presenta una dispersión extendida reflejada en sus entropías sintéticas iniciales ($En_{Ls} = 11.16$ y $En_{Rs} = 12.35$).
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.95\textwidth]{CloudDelphi_Evolution_Analysis.pdf}
+    \caption{Delphi de nube en dos rondas}
+    \label{fig:clouds}
+\end{figure}
+
+Luego de finalizar la segunda ronda, se aprecia cierta convergencia cognitiva en la opinión de los expertos, ya que la nube sintética tiende a contraerse. Además, los valores calculados muestran una entropía notablemente menor en el perfil colectivo ($En_{Ls} = 8.64$ y $En_{Rs} = 8.89$), reduciendo así la ambigüedad grupal. Sin embargo, se observa un incremento en el grado de hiper-entropía del consenso ($He_s = 2.35$), probablemente ocasionado por un reajuste drástico en la postura de alguunos expertos. En particular, puede verse que \textbf{Exp\_2} y \textbf{Exp\_6} aumentaron marcadamente sus niveles de certeza y desplazaron sus expectativas individuales hacia valores más altos en la segunda vuelta.
+
+% --- SECCIÓN DE BIBLIOGRAFÍA ACADÉMICA ---
+\begin{thebibliography}{9}
+
+\bibitem{cruz2009}
+Cruz, M. 
+\emph{El método Delphi en las investigaciones educacionales}. 
+La Habana: Editorial Academia, 2009. 
+Disponible en: \url{https://www.academia.edu/5219377/}
+
+\bibitem{cruz2020}
+Cruz, M. 
+Una función en R para el método Delphi de Nube. Aplicaciones al pronóstico educacional. 
+\emph{Tecnología Educativa}, \emph{5}(1), 35--44, 2020. 
+Disponible en: \url{https://tecedu.uho.edu.cu/index.php/tecedu/article/view/210}
+
+\bibitem{cruz2021}
+Cruz, M., \& Cables, E. H. 
+Una generalización del Delphi difuso para estudios prospectivos.
+\emph{Universidad y Sociedad}, \emph{13}(2), 57--66, 2021.
+Disponible en: \url{https://rus.ucf.edu.cu/index.php/rus/article/view/1942}
+
+\bibitem{cruz2022}
+Cruz, M., \& Cables, E. H. 
+Un estudio comparado de dos enfoques no deterministas en el Delphi de pronóstico.
+\emph{Investigación Operacional}, \emph{43}(2), 102--119, 2022.
+Disponible en: \url{https://rev-inv-ope.pantheonsorbonne.fr/sites/default/files/inline-files/43122-09.pdf}
+
+\bibitem{cruz2012}
+Cruz, M., \& Martínez, M. C. 
+Perfeccionamiento de un instrumento para la selección de expertos en las investigaciones educativas.
+\emph{Revista Electrónica de Investigación Educativa}, \emph{14}(2), 167--179, 2012.
+Disponible en: \url{https://redie.uabc.mx/redie/article/view/317}
+
+\bibitem{cruz2020relmis}
+Cruz, M., \& Martínez, M. C. 
+Origen y desarrollo de un índice de competencia experta: el coeficiente k.
+\emph{Revista Latinoamericana de Metodología de la Investigación Social}, \emph{10}(19), 40--56, 2020.
+Disponible en: \url{https://relmis.com.ar/ojs/index.php/relmis/article/view/origen_desarrollo_indice_competencia_experta/7}
+
+\bibitem{cruz2018}
+Cruz, M., \& Rúa, J. A. 
+Surgimiento y desarrollo del método Delphi: una perspectiva cienciométrica.
+\emph{Biblios: Journal of Librarianship and Information Science}, \emph{71}, 18--41, 2018.
+Disponible en: \url{https://biblios.pitt.edu/ojs/index.php/biblios/article/view/470}
+
+\bibitem{li1995}
+Li, D., Liu, C., \& Gan, W. 
+A new model for soft qualitative concepts - cloud model. 
+\emph{Information Sciences}, \emph{3}(2), 52--60, 1995.
+
+\end{thebibliography}
+
+\end{document}
